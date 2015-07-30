@@ -85,7 +85,8 @@ class Segment:
 
 class Column:
 	def __init__(self, connected_synapses, cells_per_column = 5, x=0, y=0, hist_num=1000):
-		self.connected_synapses = connected_synapses
+		self.connected_synapses = connected_synapses # [s for s in connected_synapses if s.permanence >= .5]
+		# self.potential_synapses = [s for s in connected_synapses if s.permanence < .5]
 		self.x = x
 		self.y = y
 		self.hist_num = hist_num # How much history do we want to keep?
@@ -96,7 +97,7 @@ class Column:
 		self.active_duty_cycle = 0
 		self.overlap_duty_cycle = 0
 		self.boost = 1
-
+		self.connected_perm = .5
 		# TP
 		self.cells = [Cell()] * cells_per_column
 		self.predicted = 0
@@ -134,8 +135,8 @@ class HTM:
 		i = 0
 		j = 0
 		for _ in range(0, self.num_columns):
-			new_synapses = [(r.randint(0,self.x-1),r.randint(0,self.y-1)) for _ in range(0,num_synapses)]
-			self.columns.append( Column( [Synapse(s) for s in new_synapses], x=i, y=j) )
+			new_synapses = [ ( r.randint(0,self.x-1), r.randint(0,self.y-1) ) for _ in range(0,num_synapses)]
+			self.columns.append( Column( [Synapse(s, permanence = r.uniform(0,1)) for s in new_synapses], x=i, y=j) )
 			i += 1
 			if i % 5 == 0:
 				i = 0
@@ -145,7 +146,6 @@ class HTM:
 		self.input_space = Retina(self.x,self.y)
 
 	def get_input(self, t, source_input):
-		print(source_input)
 		return(self.input_space.receptors[source_input])
 
 	def set_input_space(self, new_inputs):
@@ -174,12 +174,12 @@ def boost_function(active_duty_cycle, min_duty_cycle):
 
 def update_active_duty_cycle(column):
 	column.active_duty_cycle_history.pop(0)
-	column.active_duty_cycle_history.append(1 if overlap > 0 else 0)
+	column.active_duty_cycle_history.append(1 if column.overlap > 0 else 0)
 	return(sum(column.active_duty_cycle_history)/column.hist_num)
 
 def update_overlap_duty_cycle(column):
-	column.overlap_duty_cycle.pop(0)
-	column.overlap_duty_cycle_history.append(1 if overlap > 0 else 0)
+	column.overlap_duty_cycle_history.pop(0)
+	column.overlap_duty_cycle_history.append(1 if column.overlap > 0 else 0)
 	return(sum(column.overlap_duty_cycle_history)/column.hist_num)
 
 def increase_permanences(column, perm_inc):
@@ -189,9 +189,10 @@ def increase_permanences(column, perm_inc):
 def average_receptive_field_size(columns):
 
 	def receptive_field_size(c):
-		sum([1 for s in c.connected_synapses if s >= connected_perm])
+		return(sum([1 for s in c.connected_synapses if s.permanence >= c.connected_perm]))
 
 	# return( sum( [receptive_field_size(c) for c in columns] ) / len(columns) )
+	print([receptive_field_size(c) for c in columns])
 	return(numpy.mean([receptive_field_size(c) for c in columns]))
 
 # def get_input(t, source_input):
@@ -203,6 +204,7 @@ def Spatial(htm):
 
 	# House keeping to fix indexing errors
 	htm.active_columns.append([])
+	print(htm.active_columns)
 
 	###############################################
 	# Phase 1: Overlap
@@ -232,7 +234,7 @@ def Spatial(htm):
 	###############################################
 	for c in htm.active_columns[htm.t]:
 		
-		for s in c.potential_synapses:
+		for s in c.connected_synapses: 
 			if s.active:
 				s.permanence += htm.permanence_inc
 				s.permanence = min(1.0, s.permanence)
@@ -241,7 +243,7 @@ def Spatial(htm):
 				s.permanence = max(0.0, s.permanence)
 
 	for c in htm.columns:
-		c.min_duty_cycle = 0.01 * max_duty_cycle(neighbors(c),htm)
+		c.min_duty_cycle = 0.01 * max_duty_cycle(neighbors(c,htm))
 		c.active_duty_cycle = update_active_duty_cycle(c)
 		c.boost = boost_function(c.active_duty_cycle, c.min_duty_cycle)
 
@@ -311,9 +313,10 @@ if __name__ == '__main__':
     		iput = input1
     	else:
     		iput = input2
+    	Spatial(my_htm)
     my_htm.set_input_space(iput)
     print(my_htm.input_space.receptors)
-    Spatial(my_htm)
+    print('done')
 
 
 
